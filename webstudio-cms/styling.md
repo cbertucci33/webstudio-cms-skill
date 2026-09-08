@@ -10,17 +10,14 @@ Never hand-write a style value object. Webstudio ships a CSS parser inside the a
 container. Use it to produce every value so Webstudio accepts them:
 
 ```js
-// lib/genstyle.mjs (copy from this skill's scripts/ folder to your deployment)
-import { styleDecl, parseStyle } from './lib/genstyle.mjs'
+// Call Webstudio's css-data parser to produce a valid style value
+const { parseCssValue } = require("/app/node_modules/.pnpm/@webstudio-is+css-data@file+packages+css-data_zod@4.4.3/node_modules/@webstudio-is/css-data/lib/index.js")
+parseCssValue('display', 'flex')
 ```
 
-The parser lives at:
-```js
-require("/app/node_modules/.pnpm/@webstudio-is+css-data@file+packages+css-data_zod@4.4.3/node_modules/@webstudio-is/css-data/lib/index.js")
-```
-
-`parseStyle(property, cssValue)` calls that parser via `docker compose exec app node -e ...`
-and is memoized so identical calls hit a cache. Never write a style value object by hand.
+`parseStyle(property, cssValue)` is a helper that calls that parser via
+`docker compose exec app node -e ...` and memoizes identical calls. Never write a
+style value object by hand.
 
 ```js
 // Resolve the native "Base" breakpoint id from the loaded build's `breakpoints`
@@ -73,8 +70,8 @@ styleSources.push({ type: 'token', id: 'tok-surface', name: 'surface' })
 styles.push({ breakpointId, styleSourceId: 'tok-surface', property: 'backgroundColor', value: parsedColor })
 ```
 
-Define your own site-wide palette as tokens. A fully worked token-injection example is
-in this skill's `scripts/` folder.
+Define your own site-wide palette as tokens (create them via the Style Panel's
+Style Sources, or import from the Design Tokens format - see `design.md`).
 
 ## Responsive styles via breakpoints
 

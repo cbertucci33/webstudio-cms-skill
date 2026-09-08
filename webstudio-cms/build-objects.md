@@ -20,23 +20,29 @@ Each node is an `instance` (element) or a child reference:
 `tag` is the HTML tag (`div`, `h1`, `p`, `a`, `section`, etc.). `component` is the
 Webstudio component name. A leaf text node is `{type:'text', value}`.
 
-## The `wsbuild.mjs` library (supported path)
+## The build helper patterns
 
-Reusable helpers live in a `lib/` folder next to your compose project (see
-`SKILL.md` -> Memory & Library). Full source is bundled in this skill's `scripts/`
-folder - copy it to your deployment and adapt the paths inside. Use these - they
-generate the exact ids and shapes Webstudio expects:
+The supported way to construct a build is to assemble the native objects yourself
+(full source patterns are in `database.md` for load/commit and `styling.md` for
+style values). The shapes Webstudio expects are:
 
 ```js
-import { Build, inst, textChild, idChild, color, unit, kw, prop } from './lib/wsbuild.mjs'
-
-const b = new Build()
-const root = b.addInstance(inst('Body', 'body', [
-  { type: 'id', value: b.addInstance(inst('Box', 'div', [
-    textChild('Hello world'),
-  ])).id },
-]))
+// element
+{ type: 'instance', id: '<22-char-id>', component, tag, children: [...] }
+// child refs
+{ type: 'text', value: 'literal text' }
+{ type: 'id', value: '<instanceId>' }
+// style source binding (see styling.md)
+styleSources.push({ type: 'local', id: iid + ':ws:style' })
+styleSourceSelections.push({ instanceId: iid, values: [iid + ':ws:style'] })
+// style row
+{ breakpointId, styleSourceId, property, value }
+// prop
+{ id: iid + ':' + name, instanceId, name, type, value }
 ```
+
+IDs must be Webstudio-style (alphanumeric, no `:` or `-_`). Use a random alphanumeric
+string of ~22 chars; don't reuse one id across elements.
 
 Helpers:
 - `uid(n)` - random Webstudio-style id (alphanumeric, no `:` or `-_`)

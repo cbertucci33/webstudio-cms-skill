@@ -25,7 +25,6 @@ instance (Docker Compose) and everything you can do with it.
 | The Builder UI (canvas, navigator, modes) | `ui-builder.md` |
 | Webstudio design system (tokens, variables) | `design.md` |
 | Advanced features (CMS, variables, forms, AI) | `features.md` |
-| Working scripts / reusable lib | see `Memory & Library` below |
 
 Read the file for the area you're working in BEFORE touching the build. The master
 file stays lean on purpose - detail lives in the per-area files.
@@ -36,15 +35,14 @@ This skill is generic to any self-hosted Webstudio deployment. Replace the place
 with your own values before relying on them:
 
 - Deployment: `<your-dir>/docker-compose.yml` and `.env` (see `api.md` for every env knob)
-- Reusable lib + working scripts: a `lib/` folder next to your compose project (see `Memory & Library`)
-- This skill folder: the skill itself (publishable as-is)
+- This skill folder: the skill itself (publishable as-is, pure markdown - no runnable code)
 
 ## Critical Rules
 
 1. **One fix per turn. Save a NEW named copy after every change.** Never overwrite in place.
 2. **Draft build = `where deployment is null order by "createdAt" desc limit 1`.** Always operate
    on the draft, never an arbitrary Build id.
-3. **Never hand-write a style value.** Use Webstudio's own css-data parser (`lib/genstyle.mjs`).
+3. **Never hand-write a style value.** Use Webstudio's own css-data parser (see `styling.md`).
 4. **When you mutate instances, write back ALL loaded columns.** Partial writes corrupt the build.
 5. **Every styled element needs a bound local style source** in `styleSourceSelections`, or the
    style silently won't apply.
@@ -60,20 +58,6 @@ with your own values before relying on them:
 2. Make ONE change on one page/element (only what's asked, no extras).
 3. Save a NEW named copy of any script output.
 4. Verify by inspecting the canvas DOM / XML (see `verification.md`).
-
-## Memory & Library
-
-These helpers are the supported build path. They are generic patterns - create them
-in a `lib/` folder next to your compose project and adapt the paths inside.
-
-- `genstyle.mjs` - `parseStyle(property, cssValue)` + `styleDecl()` - the only supported way to
-  produce valid style values. Memoized; uses the css-data parser inside the app container.
-- `wsbuild.mjs` - `Build` class + `inst()`, `textChild()`, `color()`, `unit()`, `kw()`, `prop()`,
-  `addPage()`, and the style/prop helpers.
-- `audit-all.mjs` - Playwright full-page audit (login, switch pages, measure canvas DOM).
-
-> Full source for these helpers is in the `scripts/` folder of this skill; copy them
-> to your deployment's `lib/` and point them at your instance.
 
 ## Memory
 

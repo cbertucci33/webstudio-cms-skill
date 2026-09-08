@@ -20,12 +20,12 @@ programmatically against the Webstudio-native data model.
 
 ## Known Risks and Mitigations
 
-- **Risk:** The helper scripts run `docker compose exec` against the database and
-  builder containers, assuming the standard self-hosted Webstudio container layout.
-  **Mitigation:** The scripts read native `POSTGRES_USER`/`POSTGRES_DB` from the
+- **Risk:** Direct SQL / docker exec commands assume the standard self-hosted
+  Webstudio container layout (db service, postgres user, webstudio database).
+  **Mitigation:** The commands read native `POSTGRES_USER`/`POSTGRES_DB` from the
   deployment `.env` instead of hardcoding credentials, and the skill documents the
   exact schema assumptions. If your layout differs, adjust the container/service
-  names in the scripts.
+  names in the examples.
 - **Risk:** Secrets (`AUTH_SECRET`, `POSTGRES_PASSWORD`, `S3_*`) can be exposed if
   copied into skill docs or memory files.
   **Mitigation:** Secrets live only in the deployment `.env`; the skill reads them
@@ -38,8 +38,8 @@ programmatically against the Webstudio-native data model.
 ## Skill Output
 
 **Output Type(s):** guidance, markdown, code, shell commands, configuration
-**Output Format:** Markdown guidance with code examples and the bundled helper
-scripts (`genstyle.mjs`, `wsbuild.mjs`, `audit-all.mjs`).
+**Output Format:** Pure Markdown guidance with code examples and exact commands.
+No runnable scripts are bundled, so there is no execution surface to audit.
 
 ## Ethical Considerations
 

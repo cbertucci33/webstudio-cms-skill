@@ -27,11 +27,10 @@ const out = await frame.evaluate(() => {
   proper style row.
 - **Element count + children** confirm the tree built correctly.
 
-## Full-page audit (the supported script)
+## Full-page audit (Playwright pattern)
 
-A Playwright full-page audit is bundled in this skill's `scripts/` folder
-(`audit-all.mjs`) - copy it to your deployment and point the project id + login at
-your instance. It:
+A reusable Playwright full-page audit pattern (no bundled script - build it from
+this). It:
 1. Launches Chrome (Playwright), logs in via "Login with Secret".
 2. Opens the editor at `http://p-<projectId>.localhost:3000/`.
 3. For each target page, switches via the `[aria-label="Toggle pages"]` control and

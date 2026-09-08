@@ -67,7 +67,7 @@ token with `canPublish` if it only reads.
 The builder supports a dev/login-by-secret flow. `DEV_LOGIN` / `DEV_LOGIN_EMAIL` env
 vars control it; `AUTH_SECRET` is the shared secret for "Login with Secret".
 
-Playwright login pattern (used by `lib/audit-all.mjs` and the working scripts):
+Playwright login pattern:
 1. `page.goto('http://localhost:3000/')`
 2. Click `button:has-text("Login with Secret")`
 3. Fill the secret input with `AUTH_SECRET` (read from `.env`)
