@@ -8,14 +8,13 @@ deployment, project ID, exact draft build ID, domain, and build mode, then get e
 Prefer, in order:
 
 1. the authenticated Builder UI;
-2. the official CLI with a scoped project credential;
+2. the official CLI/MCP with a project-scoped Build-access share link;
 3. a project-scoped token with `canPublish` and no unrelated permissions;
-4. an internal publisher API only when it is private to the deployment network and protected by
-   an authenticated service boundary.
+4. the internal publisher control API as an explicitly approved compatibility path from the
+   authorized host/app container.
 
-Do not expose or document an unauthenticated publish endpoint as an admin interface. Resolve one
-exact draft by project ID and build ID, back it up, use `buildMode:"ssg"` unless SSR was deliberately
-configured, and confirm the returned build ID matches the approved target.
+Resolve one exact draft by project ID and build ID, back it up, use `buildMode:"ssg"` unless SSR
+was deliberately configured, and confirm the returned build ID matches the approved target.
 
 Verify the approved domain without querying the database as a superuser:
 ```bash
@@ -26,8 +25,9 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 ## Publisher service
 
-- Port 4000 (internal): build API. Keep it private; add authenticated service-to-service access if
-  anything outside the trusted compose network can reach it.
+- Port 4000 (internal): build API. The community publisher does not authenticate inbound
+  `/publish` or `/unpublish` requests. `TRPC_SERVER_API_TOKEN` authenticates callbacks from the
+  publisher to the Builder; it does not protect these routes.
 - Port 4001 -> host :80: site proxy - serves ALL published sites.
   - **SSR domains** -> reverse-proxied to their react-router-serve subprocess.
   - **SSG domains** -> static files served directly from `/var/publish/<domain>/`.
@@ -38,6 +38,34 @@ tag for unattended administration.
 
 `publishStatus` on the Build is `PENDING` | `PUBLISHED` | `FAILED` - check it after a
 publish if something didn't go live.
+
+Keep port 4000 un-published. Prefer a dedicated internal control network containing only `app` and
+`publisher`; the site proxy may remain on its separate published port. If a deployment must make
+the control API reachable outside that boundary, add an authenticated gateway and qualify the
+Builder's ability to send the required credential before switching. Do not assume the current
+Builder adds an authorization header—it does not.
+
+### Direct internal compatibility path
+
+Direct `/publish` and `/unpublish` calls preserve the community stack's full functionality. They
+are allowed only from an operator-authorized host through `docker compose exec app`, after final
+publish approval and exact build/domain confirmation. Host Docker access is the authorization
+boundary and is effectively root-level deployment access. Never expose the same command through a
+public listener or unattended webhook.
+
+The correct direct publish sequence is:
+
+1. Resolve and back up the exact draft.
+2. Create a production build through the authenticated Builder/CLI, an authenticated PostgREST
+   role, or the explicitly approved internal compatibility RPC. Capture the returned production
+   build ID; do not pass an arbitrary or merely "latest" draft ID.
+3. Submit that production build ID, the internal Builder origin, and the approved build mode to the
+   private publisher control route from the `app` container.
+4. Confirm the publisher job and Builder callback both reach `PUBLISHED`; then verify the approved
+   domain. A successful HTTP acknowledgement only means the asynchronous job was queued.
+
+This route retains the raw self-hosted publish capability without claiming that it has inbound
+token authentication.
 
 ## Domains
 

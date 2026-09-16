@@ -28,14 +28,28 @@ keys, publisher tokens, and DNS-provider tokens are sensitive credentials.
 Secret names may be documented because operators need to configure deployments. Secret values
 must remain in a secret manager or deployment mechanism with restrictive access.
 
+## Network exposure
+
+- Publish only the Builder and intended site-serving ports. Keep Postgres, PostgREST, and the
+  publisher control port private.
+- MinIO's S3 API may be exposed only when clients require it; keep its admin console private,
+  replace default credentials, and use TLS at the boundary.
+- A Docker `internal` network is preferred for database/control traffic. Do not attach unrelated
+  workloads to the trusted application network.
+- Treat Docker daemon access as root-equivalent deployment administration.
+
 ## PostgREST and database access
 
-Anonymous full-table or RPC access is unsafe. An internal Docker network reduces exposure but does
-not turn unauthenticated writes into an acceptable admin interface.
+The community self-host stack depends on broad `anon` privileges unless the Builder is configured
+with `POSTGREST_API_KEY`. Do not revoke those grants in isolation: that removes Webstudio
+functionality. Choose one documented profile from `postgrest-auth.md`.
 
-- Revoke broad `anon` write grants and publish-capable RPC execution.
-- Do not expose PostgREST directly to the public network.
-- Use authenticated, least-privilege roles or project-scoped application APIs.
+- In compatibility mode, keep PostgREST private and treat Docker/host access as deployment-admin
+  access. Never expose the service or present internal anonymous calls as a public admin API.
+- In hardened mode, move the Builder to a dedicated JWT database role, validate every required
+  Builder operation, update `db-setup`, and only then revoke `anon`.
+- For project-scoped automation, prefer official CLI/MCP with a Build-access share link. Database
+  role grants are not project-scoped unless the database enforces that scope.
 - For the advanced direct-database fallback, use a restricted maintenance role, bound parameters,
   one exact project/build target, a transaction, optimistic concurrency, a backup, and an exact
   affected-row check. Do not connect as the `postgres` superuser for routine edits.
@@ -47,10 +61,10 @@ them, preserve required application access, and test the Builder after hardening
 
 - Publishing is an external production change. Show the operator the project, draft build, domain,
   and build mode, then obtain explicit confirmation immediately before starting it.
-- Prefer the authenticated Builder, official CLI, or a scoped token with only the required
-  permission. If a self-hosted publisher lacks native authentication, keep it on a private network
-  and put an authenticated service boundary in front of it. Do not publish through an exposed,
-  unauthenticated endpoint.
+- Prefer the authenticated Builder or official CLI/MCP with a scoped token. The community
+  publisher's control API has no inbound credential check. Preserve it behind a dedicated private
+  app-to-publisher network; never publish its control port. Direct internal calls are break-glass
+  deployment administration and require the same explicit approval as a database write.
 - Back up the exact draft before publishing. Confirm the returned build ID and final status.
 - Deletion, restore, database cleanup, token creation, and DNS changes require separate approval.
 

@@ -24,14 +24,18 @@ docker compose logs publisher | tail   # publish confirmations
 
 ## Accessing the database
 
-Use a deployment-specific restricted maintenance role. Keep its credential in the deployment's
+For project editing, use official Webstudio CLI/MCP first. It applies native transactions,
+validation, versioning, and project authorization.
+
+For deployment maintenance, use a deployment-specific restricted role. Keep its credential in the
 approved secret manager and inject it without placing the value in command arguments or output.
 
 If your deployment renamed services or the DB, adjust the `docker compose exec`
 service name / `-d` db name to match. The DB user is typically `postgres`.
 
-Do not use the `anon` role for administration. Some community stacks grant it broad access;
-revoke broad writes and state-changing RPC execution as described in `security.md`.
+The community stack's Builder may depend on `anon`. Do not revoke it until the authenticated
+`POSTGREST_API_KEY` migration in `postgrest-auth.md` passes. Internal anonymous PostgREST and direct
+host SQL are deployment-wide admin surfaces, not project-scoped credentials.
 
 Direct SQL is an advanced maintenance fallback. Use a restricted maintenance role rather than
 the `postgres` superuser for routine edits. Keep the database private to the deployment network.
@@ -72,61 +76,33 @@ Direct database edits can corrupt the authoritative site state. Before a write, 
 approval, back up the exact row, and record its project ID, build ID, and concurrency value such
 as `updatedAt` or `version`.
 
-Use a PostgreSQL client with bound parameters. Do not construct SQL by interpolating JSON, do not
-write SQL containing site data to a predictable `/tmp` path, and do not update every draft.
+Do not construct SQL by interpolating JSON, write site data to a predictable `/tmp` path, or update
+every draft. Use a PostgreSQL client that actually exists in the deployment and supports bound
+parameters. Inspect the running schema first: current community builds store Webstudio namespaces
+as `text`, not `jsonb`.
 
-The following JavaScript is the required shape. Run it in a trusted deployment environment with
-a restricted database URL injected through an approved secret mechanism. Adapt column casts to
-the inspected schema.
+The required transaction contract is:
 
-```js
-import pg from "pg"
+1. Begin a transaction and select one row by both build ID and project ID with
+   `deployment is null` and `for update`.
+2. Require its `version` to equal the version captured with the backup.
+3. Load and preserve all current namespaces: `pages`, `instances`, `styles`, `styleSources`,
+   `styleSourceSelections`, `props`, `breakpoints`, `dataSources`, `resources`,
+   `marketplaceProduct`, and `projectSettings`.
+4. Validate the mutated Webstudio structures. Prefer the official CLI/MCP schemas rather than
+   hand-rolled JSON checks.
+5. Update only that row with bound values. Set `version` to the prior version plus one, set a new
+   unique `lastTransactionId`, and set `updatedAt` to the current time. Webstudio's native patch
+   path performs all three; omitting them can desynchronize the editor.
+6. Keep the original `projectId`, draft status, and untouched namespaces unchanged.
+7. Require exactly one returned row. Roll back on zero or multiple rows, validation failure, or a
+   version mismatch.
+8. Re-read the row, compare the intended namespaces, and keep the mode-0600 backup until canvas
+   and live-site verification pass.
 
-const { Client } = pg
-const client = new Client({ connectionString: process.env.WEBSTUDIO_MAINTENANCE_DATABASE_URL })
-const projectId = process.env.WEBSTUDIO_PROJECT_ID
-const buildId = process.env.WEBSTUDIO_BUILD_ID
-const expectedUpdatedAt = process.env.WEBSTUDIO_EXPECTED_UPDATED_AT
-
-if (!projectId || !buildId || !expectedUpdatedAt) throw new Error("exact target required")
-await client.connect()
-try {
-  await client.query("BEGIN")
-  const current = await client.query(
-    `select id, "projectId", "updatedAt", instances, styles, "styleSources",
-            "styleSourceSelections", props, pages
-       from "Build"
-      where id = $1 and "projectId" = $2 and deployment is null
-      for update`,
-    [buildId, projectId],
-  )
-  if (current.rowCount !== 1) throw new Error("draft identity mismatch")
-  if (new Date(current.rows[0].updatedAt).toISOString() !== expectedUpdatedAt) {
-    throw new Error("draft changed since backup")
-  }
-
-  // Save current.rows[0] to an operator-approved, mode-0600 backup location.
-  // Build `next` from that exact row, mutate only the requested fields, and validate every JSON value.
-  const next = mutateAndValidate(current.rows[0])
-
-  const updated = await client.query(
-    `update "Build"
-        set instances = $1, styles = $2, "styleSources" = $3,
-            "styleSourceSelections" = $4, props = $5, pages = $6
-      where id = $7 and "projectId" = $8 and deployment is null and "updatedAt" = $9
-      returning id`,
-    [next.instances, next.styles, next.styleSources, next.styleSourceSelections,
-     next.props, next.pages, buildId, projectId, expectedUpdatedAt],
-  )
-  if (updated.rowCount !== 1) throw new Error("concurrent update or target mismatch")
-  await client.query("COMMIT")
-} catch (error) {
-  await client.query("ROLLBACK")
-  throw error
-} finally {
-  await client.end()
-}
-```
+The actual host may use `docker compose exec db psql` as a break-glass transport because Docker
+access is already deployment-admin authority. That does not justify using `postgres` routinely or
+embedding arbitrary site JSON in shell/SQL strings.
 
 After commit, re-read the same build ID and verify only the intended values changed. Keep the
 backup until canvas and published-site verification pass.

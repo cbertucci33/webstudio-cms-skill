@@ -1,15 +1,16 @@
 # Webstudio API Surface
 
-This documents the programmatic surface of this self-hosted Webstudio instance -
-what you can reach, how auth works, and what the underlying data model lets you do.
-Everything here is verified against the live deployment (schema, env, working
-scripts).
+This documents the programmatic surface of self-hosted Webstudio: what can be reached, how the
+authorization layers differ, and what the underlying data model permits. Deployment facts are
+verified against the live community stack; authenticated alternatives are verified against the
+running Builder revision's source and Webstudio's versioned CLI/MCP documentation.
 
 ## Access layers (verified against a live self-hosted instance)
 
 | Layer | What it is | How to reach it |
 |-------|-----------|-----------------|
-| **Direct SQL** | Postgres 15 | Restricted maintenance role inside the compose network (advanced fallback) |
+| **Official CLI/MCP** | Project-scoped native Webstudio API | Build-access share link; preferred for agents |
+| **Direct SQL** | Postgres 15 | Authorized host/maintenance role (advanced fallback) |
 | **PostgREST** | REST API over the public schema | `http://postgrest:3000/<table>` (internal only) |
 | **Builder** | The Webstudio app (UI + tRPC) | `http://localhost:3000` (this is the Remix app, NOT postgrest) |
 | **Publisher** | Build API + site proxy | `:4000` build API / `:4001` -> `:80` sites |
@@ -19,29 +20,35 @@ scripts).
 > PostgREST is reachable only from inside the compose network (e.g. from the app
 > container) at `http://postgrest:3000`.
 
-## PostgREST security boundary
+## PostgREST capability and security boundary
 
-Some community self-hosting stacks grant the `anon` database role broad table and RPC access.
-Do not rely on that behavior. Anonymous reads can expose user, project, token, and domain data;
-anonymous writes or RPC execution can alter or publish a site.
+The community self-host compose deliberately grants the `anon` database role full table and
+sequence access; state-changing functions are also executable through the resulting role/public
+privileges. The Builder uses that surface through an internal-only PostgREST service;
+in the default compose profile its `POSTGREST_API_KEY` is empty. Removing those grants without first
+configuring an authenticated Builder role breaks normal Webstudio database operations.
 
-Before using PostgREST for administration:
-
-1. Keep the service private to the deployment network.
-2. Inspect current table, sequence, function, and default privileges.
-3. Revoke broad `anon` writes and execution on state-changing RPCs.
-4. Require an authenticated least-privilege role or project-scoped application token.
-5. Verify that unauthenticated read, write, and state-changing RPC requests are rejected.
-
-Do not include anonymous write or publish commands in runbooks. See `security.md` for the required
-boundary. A deployment may expose these RPC names, but permission must be restricted:
+This preserves the entire PostgREST surface, including CRUD and these RPCs:
 `swap_asset_file`, `delete_stale_asset_file_metadata`, `restore_development_build`,
 `replace_asset_file_metadata`, `clone_project`, `create_production_build`,
 `delete_asset_file_metadata_if_matches`, `database_cleanup`.
 
+Choose one explicit profile:
+
+- **Compatibility:** retain the community grants, keep PostgREST un-published on a private Docker
+  network, and treat host/Docker access as deployment-admin authorization. Internal anonymous calls
+  remain possible but are never a public or project-scoped admin API.
+- **Hardened:** configure the Builder's supported `POSTGREST_API_KEY` JWT, grant its database role
+  the same required capabilities, validate the Builder, then revoke `anon`. See
+  `postgrest-auth.md` for the migration order and acceptance checks.
+
+For normal agent work, use official Webstudio CLI/MCP with a project-scoped Build-access share
+link. A Webstudio `AuthorizationToken` authorizes Builder operations; it is not automatically a
+PostgREST JWT and must not be presented as one.
+
 ## Database tables (public schema)
 
-- `Build` - the site build (JSON columns; see `database.md`)
+- `Build` - the site build (JSON-encoded text namespaces; see `database.md`)
 - `Project` - `{id, title, domain, userId, isDeleted, workspaceId, tags, ...}`
 - `Asset`, `AssetFileMetadata`, `AssetFolder` - asset metadata (bytes in MinIO)
 - `Domain`, `ProjectDomain` - custom domains + DNS records
@@ -65,10 +72,12 @@ names required by the deployment. See `security.md` before using any credential.
 ## Authentication
 
 - **Builder UI:** "Login with Secret" using `AUTH_SECRET`, or OAuth if configured.
-- **PostgREST:** require an authenticated least-privilege role. Broad anonymous access is a
-  vulnerability to remediate.
-- **Publisher:** `TRPC_SERVER_API_TOKEN` authenticates publish requests to the
-  builder/publisher.
+- **Official CLI/MCP:** a project-scoped Build-access share link. Treat the link as a credential.
+- **PostgREST:** either internal `anon` compatibility mode or a JWT role through
+  `POSTGREST_API_KEY`; see `postgrest-auth.md`.
+- **Publisher:** the community publisher's inbound `/publish` and `/unpublish` routes do not check
+  `TRPC_SERVER_API_TOKEN`. That token authenticates publisher callbacks to the Builder. Keep the
+  control port internal or isolate `app` and `publisher` on a dedicated control network.
 - **AuthorizationToken:** per-project tokens with scoped permissions
   (`canClone`, `canCopy`, `canPublish`, `canUseApi`). Use least-privilege.
 
@@ -78,12 +87,14 @@ ephemeral secret injection. Never discover it from `.env`. See `verification.md`
 
 ## Working against the build (not the UI)
 
-Prefer authenticated Builder, CLI, or application APIs. Direct SQL is an advanced fallback for
-authorized self-hosted maintenance. Its safe workflow is:
+Prefer official CLI/MCP or authenticated Builder APIs. The official CLI can inspect and edit the
+native project model, publish/unpublish, manage domains, inspect permissions, and run verification.
+Direct SQL is an advanced fallback for authorized self-hosted maintenance. Its safe workflow is:
 
 1. Load the draft build columns (see `database.md`).
 2. Mutate instances/styles/props/pages.
-3. Write all loaded columns through a parameterized, transaction-protected, exact-row update.
+3. Write the exact row through a transaction-protected, exact-version update; preserve every
+   namespace and advance `version`, `lastTransactionId`, and `updatedAt`.
 4. Publish through an authenticated or network-isolated admin boundary after approval.
 5. Verify on the canvas / live site (see `verification.md`).
 

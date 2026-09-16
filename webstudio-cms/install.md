@@ -57,6 +57,25 @@ Needs Node.js 22+. Link a project non-interactively:
 npx webstudio link --link "<share-link-with-build-access>"
 ```
 
+Treat the share link as a credential. Prefer `init --link ... --json` for automation, check
+`permissions --json`, and keep `.webstudio` state out of public repositories and logs.
+
+## Native administration with CLI/MCP
+
+Current Webstudio CLI/MCP is the supported agent path for project inspection and mutation. It can
+edit the native visual-builder model, sync/import/export, publish/unpublish, manage domains, inspect
+permissions, and run audits. Start with:
+
+```bash
+npx --yes webstudio@<approved-version> init --link "<share-link-with-build-access>" --json
+npx --yes webstudio@<approved-version> permissions --json
+npx --yes webstudio@<approved-version> meta.index
+```
+
+Then request only the needed MCP tools. Use `--dry-run` for supported mutations before committing.
+For large JSON/JSX inputs, use a mode-0600 input file under the linked project rather than shell
+interpolation. See the version-matched official MCP reference before relying on a tool name.
+
 The share link comes from the Builder's Share dialog (needs Build access).
 
 ## Deploy a site

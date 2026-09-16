@@ -59,6 +59,26 @@ operator's approved secret manager or an ephemeral environment injection. Fill t
 without printing, logging, persisting, screenshotting, or returning the value. Remove the injected
 value after the session. See `security.md`.
 
+An approved Playwright run may consume a task-specific process variable; it must not open or parse
+the deployment `.env` file:
+
+```js
+const secret = process.env.WEBSTUDIO_LOGIN_SECRET
+if (!secret) throw new Error("approved Webstudio login secret was not injected")
+try {
+  await page.goto(builderUrl)
+  await page.getByRole("button", { name: "Login with Secret" }).click()
+  await page.getByPlaceholder("Auth secret").fill(secret)
+  await page.getByRole("button", { name: /log in|continue/i }).click()
+} finally {
+  delete process.env.WEBSTUDIO_LOGIN_SECRET
+}
+```
+
+The operator or secret broker injects `WEBSTUDIO_LOGIN_SECRET` only for that process. Do not echo
+the environment, enable shell tracing, record the login form, or preserve the variable in a service
+definition. Prefer OAuth or a dedicated automation identity when the deployment supports one.
+
 After login, the editor holds auth cookies (`_csrf`, session). Use the browser's own
 `fetch` for any in-page API/tRPC calls so cookies/CSRF are handled automatically.
 
