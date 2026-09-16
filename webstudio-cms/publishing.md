@@ -17,10 +17,11 @@ Do not expose or document an unauthenticated publish endpoint as an admin interf
 exact draft by project ID and build ID, back it up, use `buildMode:"ssg"` unless SSR was deliberately
 configured, and confirm the returned build ID matches the approved target.
 
-To fetch the published site (uses the project's domain from the `Domain` table):
+Verify the approved domain without querying the database as a superuser:
 ```bash
-D=$(docker compose exec -T db psql -U postgres -d webstudio -t -A -c "select domain from \"Domain\" limit 1" | tr -d '[:space:]')
-curl -s -o /dev/null -w "%{http_code}\n" -H "Host: $D" http://localhost:80/
+test -n "$WEBSTUDIO_EXPECTED_DOMAIN"
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Host: $WEBSTUDIO_EXPECTED_DOMAIN" http://localhost:80/
 ```
 
 ## Publisher service
