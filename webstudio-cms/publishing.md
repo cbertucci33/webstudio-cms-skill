@@ -1,23 +1,21 @@
 # Webstudio Publishing, Domains & Auth
 
-## Publishing via the publisher API (VERIFIED live)
+## Publishing safely
 
-Publish the DRAFT build (`deployment is null`), not an arbitrary Build id. Use
-`buildMode:"ssg"` (static) - `ssr` needs a docker socket the publisher may not have.
+Publishing is an external production change. Immediately before publishing, show the operator the
+deployment, project ID, exact draft build ID, domain, and build mode, then get explicit approval.
 
-```bash
-DRAFT_ID=$(docker compose exec -T db psql -U postgres -d webstudio -t -A -c \
-  "select id from \"Build\" where deployment is null order by \"createdAt\" desc limit 1" | tr -d '[:space:]')
-docker compose exec -T app sh -c "wget -qO- --post-data='{\"buildId\":\"$DRAFT_ID\",\"builderOrigin\":\"http://app:3000\",\"buildMode\":\"ssg\"}' --header='Content-Type: application/json' http://publisher:4000/publish"
-docker compose logs publisher | tail   # confirm "Successfully published"
-```
+Prefer, in order:
 
-Verified end-to-end on a live instance:
-- The POST returns `{"success":true}`.
-- Publisher logs confirm: `Publishing <domain> to /var/publish/<domain>...` then
-  `Successfully published <domain>` and `notifyBuildStatus(<buildId>, PUBLISHED) OK`.
-- The site is then served on port 80 with the project's domain as the Host header.
-- This creates a new `Build` row with `deployment` set and `publishStatus='PUBLISHED'`.
+1. the authenticated Builder UI;
+2. the official CLI with a scoped project credential;
+3. a project-scoped token with `canPublish` and no unrelated permissions;
+4. an internal publisher API only when it is private to the deployment network and protected by
+   an authenticated service boundary.
+
+Do not expose or document an unauthenticated publish endpoint as an admin interface. Resolve one
+exact draft by project ID and build ID, back it up, use `buildMode:"ssg"` unless SSR was deliberately
+configured, and confirm the returned build ID matches the approved target.
 
 To fetch the published site (uses the project's domain from the `Domain` table):
 ```bash
@@ -27,14 +25,15 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "Host: $D" http://localhost:80/
 
 ## Publisher service
 
-- Port 4000 (internal): build API - receives publish requests from the builder.
+- Port 4000 (internal): build API. Keep it private; add authenticated service-to-service access if
+  anything outside the trusted compose network can reach it.
 - Port 4001 -> host :80: site proxy - serves ALL published sites.
   - **SSR domains** -> reverse-proxied to their react-router-serve subprocess.
   - **SSG domains** -> static files served directly from `/var/publish/<domain>/`.
 - Volumes: `published-sites:/var/publish`, `publisher-work:/var/work`.
 
-The publisher is `ghcr.io/webstudio-community/webstudio-publisher:latest`. Health
-check: `wget -qO- http://127.0.0.1:4000/health`.
+Pin the publisher image by reviewed immutable digest in production. Do not use a mutable `latest`
+tag for unattended administration.
 
 `publishStatus` on the Build is `PENDING` | `PUBLISHED` | `FAILED` - check it after a
 publish if something didn't go live.
@@ -67,11 +66,15 @@ token with `canPublish` if it only reads.
 The builder supports a dev/login-by-secret flow. `DEV_LOGIN` / `DEV_LOGIN_EMAIL` env
 vars control it; `AUTH_SECRET` is the shared secret for "Login with Secret".
 
-Playwright login pattern:
-1. `page.goto('http://localhost:3000/')`
-2. Click `button:has-text("Login with Secret")`
-3. Fill the secret input with `AUTH_SECRET` (read from `.env`)
-4. Submit, then navigate to the editor URL `http://p-<projectId>.localhost:3000/`
+Prefer an already-authenticated browser session or a dedicated low-privilege automation identity.
+If `AUTH_SECRET` is the only available login method:
+
+1. Get explicit approval to use it for this named deployment and task.
+2. Receive it through the operator's approved secret manager or ephemeral process environment.
+3. Fill the secret field without printing, logging, recording, or persisting the value.
+4. Remove the injected value when the task ends.
+
+Never search for or read `AUTH_SECRET` from `.env` automatically. Rotate it if exposure is suspected.
 
 After login the editor sets auth cookies (`_csrf`, session). For direct tRPC/API
 calls inside the page, use the browser's own `fetch` so cookies/CSRF are handled.

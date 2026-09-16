@@ -49,13 +49,15 @@ The canvas shows one page at a time. To switch:
 Give the canvas time to re-render between switches (wait several seconds after
 navigating and after each page change).
 
-## Login automation (needed before any browser work)
+## Authenticated browser verification
 
-Read `AUTH_SECRET` from `.env`, not from memory. Pattern:
-1. `page.goto('http://localhost:3000/')`
-2. Click `button:has-text("Login with Secret")`
-3. Fill the secret input with `AUTH_SECRET`
-4. Submit; then `page.goto('http://p-<pid>.localhost:3000/')` to open the editor.
+Prefer an already-authenticated browser session or a dedicated low-privilege automation identity.
+Do not search for credentials or read `.env` automatically.
+
+If secret login is required, get explicit approval and use `AUTH_SECRET` only through the
+operator's approved secret manager or an ephemeral environment injection. Fill the login form
+without printing, logging, persisting, screenshotting, or returning the value. Remove the injected
+value after the session. See `security.md`.
 
 After login, the editor holds auth cookies (`_csrf`, session). Use the browser's own
 `fetch` for any in-page API/tRPC calls so cookies/CSRF are handled automatically.

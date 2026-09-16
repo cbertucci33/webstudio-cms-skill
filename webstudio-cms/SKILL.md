@@ -14,6 +14,7 @@ instance (Docker Compose) and everything you can do with it.
 | Topic | File |
 |-------|------|
 | Install / self-host setup, CLI, deploy | `install.md` |
+| Security boundaries, credentials, approval gates | `security.md` |
 | Stack, services, health, gotchas | `database.md` (stack) |
 | Build table schema, PostgREST, load/commit | `database.md` |
 | Element tree, pages, instances, props | `build-objects.md` |
@@ -34,30 +35,46 @@ file stays lean on purpose - detail lives in the per-area files.
 This skill is generic to any self-hosted Webstudio deployment. Replace the placeholders
 with your own values before relying on them:
 
-- Deployment: `<your-dir>/docker-compose.yml` and `.env` (see `api.md` for every env knob)
+- Deployment: `<your-dir>/docker-compose.yml` and its deployment-managed secret/config sources.
+  Do not read `.env` automatically; see `security.md`.
 - This skill folder: the skill itself (publishable as-is, pure markdown - no runnable code)
 
 ## Critical Rules
 
-1. **One fix per turn. Save a NEW named copy after every change.** Never overwrite in place.
-2. **Draft build = `where deployment is null order by "createdAt" desc limit 1`.** Always operate
-   on the draft, never an arbitrary Build id.
-3. **Never hand-write a style value.** Use Webstudio's own css-data parser (see `styling.md`).
-4. **When you mutate instances, write back ALL loaded columns.** Partial writes corrupt the build.
-5. **Every styled element needs a bound local style source** in `styleSourceSelections`, or the
+1. **Read `security.md` before any login, database write, asset change, domain change, or publish.**
+2. **Never use anonymous PostgREST access for administration.** Treat broad `anon` grants as a
+   deployment vulnerability to remove, not as an automation interface.
+3. **Do not discover credentials.** Use an existing authenticated session or a credential that the
+   operator explicitly authorizes through an approved secret-injection mechanism. Never read,
+   print, log, commit, or paste secret values.
+4. **Get explicit approval before external or production changes.** Publishing, DNS changes,
+   account changes, and destructive database or asset operations require a named target and a
+   final user confirmation.
+5. **One fix per turn. Save a NEW named copy after every change.** Never overwrite in place.
+6. **Resolve one exact draft by project ID and build ID.** Never update every row whose
+   `deployment` is null.
+7. **Back up the exact row before a direct database edit.** Use a transaction, bound parameters,
+   optimistic concurrency, and an exact one-row result. Roll back on any mismatch.
+8. **Never hand-write a style value.** Use Webstudio's own css-data parser (see `styling.md`).
+9. **When you mutate instances, write back ALL loaded columns.** Partial writes corrupt the build.
+10. **Every styled element needs a bound local style source** in `styleSourceSelections`, or the
    style silently won't apply.
-6. **Styles are element-scoped with no cascade.** Apply every needed property to every target
+11. **Styles are element-scoped with no cascade.** Apply every needed property to every target
    instance; don't rely on inheritance.
-7. **Publish SSG (`buildMode:"ssg"`), not SSR** - SSR needs a docker socket the publisher may not have.
-8. **Verify with canvas DOM measurements, not eyeballs.** Text-only, no images into the model.
-9. **Assets upload to MinIO** (S3-compatible); they are not stored in Postgres.
+12. **Publish SSG (`buildMode:"ssg"`), not SSR** unless the operator has deliberately configured
+   the additional SSR runtime boundary.
+13. **Verify with canvas DOM measurements, not eyeballs.** Text-only, no images into the model.
+14. **Assets upload to MinIO** (S3-compatible); they are not stored in Postgres.
 
 ## Standard Workflow
 
-1. Open the draft build (see `database.md`).
-2. Make ONE change on one page/element (only what's asked, no extras).
-3. Save a NEW named copy of any script output.
-4. Verify by inspecting the canvas DOM / XML (see `verification.md`).
+1. Confirm the target deployment and authorization boundary (`security.md`).
+2. Resolve the exact project and draft build (`database.md`).
+3. Back up that build and record its concurrency value.
+4. Make ONE requested change on one page or element.
+5. Commit through the safe one-row pattern in `database.md`.
+6. Verify by inspecting the canvas DOM or XML (`verification.md`).
+7. Publish only after separate explicit approval (`publishing.md`).
 
 ## Memory
 

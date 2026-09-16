@@ -40,10 +40,16 @@ Two export types:
 Current package is `webstudio`. Run with `npx` (do NOT install globally, do NOT use
 the old `@webstudio-is/cli` / `wstd`).
 
+Resolve and review a version first, then pin it for every automated run:
+
 ```bash
-npx --yes webstudio@latest --version   # verify latest
-npx webstudio <command>                # normal use
+npm view webstudio version
+npx --yes webstudio@<approved-version> --version
+npx --yes webstudio@<approved-version> <command>
 ```
+
+Do not use `@latest` in an unattended admin workflow. Record the approved version with the
+deployment. Pin production container images by immutable digest as described in `security.md`.
 
 Needs Node.js 22+. Link a project non-interactively:
 
@@ -79,12 +85,12 @@ Docker build needs a minimum of 1 GB RAM and 1 core CPU.
 - **Serverless (JS app):** Netlify, Vercel.
 - **Servers (Docker):** Flightcontrol, DigitalOcean+Hetzner via Coolify.
 - **Static:** Cloudflare Pages, GitHub Pages, Netlify, Vercel.
-- **Local static preview:** `npx serve .` (required - static files use absolute URLs).
+- **Local static preview:** `npx --yes serve@<approved-version> .` (static files use absolute URLs).
 
 ## Self-hosting the Builder (our setup)
 
 Docker Compose stack (services: `app`, `db`, `postgrest`, `minio`, `publisher`,
 `migrate`, `db-setup`, `minio-init`). See `database.md` and `api.md` for the full
 schema, env config, and the load/commit build pattern. Env vars come from the
-deployment `.env` (native Webstudio vars: `AUTH_SECRET`, `DEV_LOGIN`,
-`POSTGRES_*`, `S3_*`, `DEPLOYMENT_URL`, etc. - see `api.md`).
+deployment's secret/config mechanism. Do not read `.env` automatically or disclose secret values.
+See `security.md` and `api.md`.
