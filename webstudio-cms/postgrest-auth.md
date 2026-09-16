@@ -9,6 +9,14 @@ Webstudio also supports a hardened profile. The Builder reads `POSTGREST_API_KEY
 as `Authorization: Bearer <token>` on every PostgREST request. PostgREST validates that JWT with
 `PGRST_JWT_SECRET` and switches to the database role in the token's `role` claim.
 
+## Validation status
+
+- **Compatibility profile:** validated against a live community deployment. Broad internal `anon`
+  CRUD and RPC access is the default behavior there.
+- **Hardened JWT profile:** supported by the exact Builder source and PostgREST authentication
+  model, but must be proven on a disposable copy of each deployment before live migration. Do not
+  describe it as live-validated until that deployment-specific acceptance run passes.
+
 ## Choose a profile explicitly
 
 ### Community compatibility profile
@@ -26,10 +34,66 @@ been qualified with authenticated PostgREST.
 
 This preserves the current community stack. It does not make anonymous PostgREST safe to expose.
 
+## Using the default compatibility profile
+
+Use this path only from the authorized Docker host after confirming PostgREST has no published
+host port. Stop if `docker compose port postgrest 3000` returns an address.
+
+For discovery, query only the exact project/build and only the columns required for the task. Pass
+identifiers into the trusted `app` container and reject anything outside Webstudio's ID alphabet:
+
+```bash
+test -n "$WEBSTUDIO_PROJECT_ID" && test -n "$WEBSTUDIO_BUILD_ID"
+case "$WEBSTUDIO_PROJECT_ID:$WEBSTUDIO_BUILD_ID" in
+  *[!A-Za-z0-9_:-]*) echo "invalid Webstudio identifier" >&2; exit 1 ;;
+esac
+test -z "$(docker compose port postgrest 3000 2>/dev/null)" || {
+  echo "refusing: PostgREST is published on the host" >&2
+  exit 1
+}
+docker compose exec -T \
+  -e WEBSTUDIO_PROJECT_ID -e WEBSTUDIO_BUILD_ID app sh -eu -c '
+    wget -qO- \
+      "http://postgrest:3000/Build?id=eq.${WEBSTUDIO_BUILD_ID}&projectId=eq.${WEBSTUDIO_PROJECT_ID}&select=id,projectId,version,updatedAt,deployment"
+  '
+```
+
+This is anonymous at the HTTP layer but authorized by host access and the private network. It is
+deployment-wide, so the exact filter and returned identity are mandatory.
+
+For state changes, retain the full capability but apply these gates:
+
+1. Get explicit approval for the named action and exact project/build.
+2. Back up the exact affected row/object and record the current version.
+3. Use the documented RPC signature or an exact primary-key/version filter. Never issue an
+   unfiltered table write.
+4. For a `Build` update, preserve every namespace and advance `version`, `lastTransactionId`, and
+   `updatedAt` as specified in `database.md`.
+5. Require exactly one returned row or one expected RPC result; otherwise stop and restore.
+6. Re-read the target and run the relevant Builder/canvas/publish acceptance check.
+
+The available internal capabilities include table CRUD and the RPCs listed in `api.md`, including
+clone, restore, cleanup, asset metadata operations, and production-build creation. Do not turn
+these into a generic webhook, public endpoint, or unattended batch interface.
+
 ### Hardened JWT profile
 
 Use this when the operator wants unauthenticated PostgREST requests rejected while preserving the
 Builder's full database capability.
+
+### Prove it on a disposable copy first
+
+1. Take a consistent database backup and copy the compose configuration without credential values.
+2. Restore the backup into a separate compose project with separate volumes and no public ports.
+3. Pin the same Builder and PostgREST image digests as production.
+4. Apply the Builder role/default-privilege changes below to the copy.
+5. Issue a disposable JWT, set the copy's `POSTGREST_API_KEY`, and restart only the copy.
+6. Run the full acceptance set: login, dashboard/project listing, open canvas, save a native edit,
+   upload and remove a test asset, create a production build, publish it, and verify the callback.
+7. Confirm no-token table read, table write, and state-changing RPC calls are rejected.
+8. Destroy the disposable secrets and test volumes after recording the result.
+
+Only then schedule the same migration for the live deployment with a rollback session already open.
 
 1. Confirm the running Builder supports `POSTGREST_API_KEY`. Current Webstudio Builder source and
    the live community image do; older images must be checked before migration.
@@ -94,6 +158,27 @@ These statements are a deployment migration, not a routine agent action. Back up
 inspect the actual owner/grants, get explicit approval, and keep a rollback session open. Update
 the compose initialization and `db-setup` definitions in the same approved change so a redeploy
 cannot undo the result.
+
+If acceptance fails, restore the prior compose configuration and re-establish the compatibility
+profile before restarting the original Builder:
+
+```sql
+begin;
+grant usage on schema public to anon;
+grant all privileges on all tables in schema public to anon;
+grant all privileges on all sequences in schema public to anon;
+grant execute on all functions in schema public to public;
+alter default privileges for role postgres in schema public
+  grant all privileges on tables to anon;
+alter default privileges for role postgres in schema public
+  grant all privileges on sequences to anon;
+alter default privileges for role postgres in schema public
+  grant execute on functions to public;
+commit;
+```
+
+Restore the original `db-setup` definition as part of the same rollback; otherwise the next deploy
+will not reproduce the compatibility profile.
 
 The role migration should be transactional. Preserve Webstudio's required capabilities rather
 than guessing a narrower grant set during the same change. Least-privilege refinement is a later,

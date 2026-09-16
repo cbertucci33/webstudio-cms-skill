@@ -42,6 +42,10 @@ Choose one explicit profile:
   the same required capabilities, validate the Builder, then revoke `anon`. See
   `postgrest-auth.md` for the migration order and acceptance checks.
 
+`postgrest-auth.md` includes the bounded operating rules for the default profile and the staged,
+rollbackable path for attempting the authenticated profile. The default is live-validated; the
+hardened profile is source-validated until it passes a deployment-specific disposable-stack test.
+
 For normal agent work, use official Webstudio CLI/MCP with a project-scoped Build-access share
 link. A Webstudio `AuthorizationToken` authorizes Builder operations; it is not automatically a
 PostgREST JWT and must not be presented as one.

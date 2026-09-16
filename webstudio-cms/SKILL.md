@@ -43,10 +43,11 @@ with your own values before relying on them:
 ## Critical Rules
 
 1. **Read `security.md` before any login, database write, asset change, domain change, or publish.**
-2. **Identify the PostgREST profile before acting.** The community compatibility profile relies on
-   broad internal `anon` privileges and Docker-network isolation. Preserve it when required, but
-   never expose it. For authenticated PostgREST, use the tested JWT migration in
-   `postgrest-auth.md`; do not revoke `anon` first and break the Builder.
+2. **Identify the PostgREST profile before acting.** Broad internal `anon` privileges plus
+   Docker-network isolation are the current community self-host default. Preserve that capability
+   when required, but never expose it. Read the validation status and bounded-use procedure in
+   `postgrest-auth.md`. Treat its JWT profile as a staged migration until it passes the documented
+   disposable-stack test; do not revoke `anon` first and break the Builder.
 3. **Do not discover credentials.** Use an existing authenticated session or a credential that the
    operator explicitly authorizes through an approved secret-injection mechanism. Never read,
    print, log, commit, or paste secret values.
